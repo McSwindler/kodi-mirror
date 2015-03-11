@@ -35,3 +35,15 @@ msgstr ""
 msgctxt "#32003"
 msgid "Port"
 msgstr ""
+
+msgctxt "#33000"
+msgid "General"
+msgstr ""
+
+msgctxt "#33001"
+msgid "Timeout (in seconds)"
+msgstr ""
+
+msgctxt "#33002"
+msgid "Max Latency (in seconds)"
+msgstr ""

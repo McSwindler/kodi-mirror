@@ -1,6 +1,6 @@
 import xbmc, xbmcgui, xbmcaddon, xbmcvfs
 
-import requests
+import requests,time
 try:
     import simplejson as json
 except:
@@ -40,14 +40,17 @@ class MirrorPlayer( xbmc.Player ):
             return False
         return True
     
+    #TODO detect speed changes from server
     def _onPlay(self, socket, data):
-        print data
         if not self.isPaused():
             self._playstate = 1
         if self._playstate == 1:
             return False
-        id = data['params']['data']['item']['id']
-        if int(self._itemId) == int(id):
+        if data is not None:
+            id = data['params']['data']['item']['id']
+        else:
+            id = None
+        if id == None or int(self._itemId) == int(id):
             self.pause()
         else:
             self.playFromServer()
@@ -59,7 +62,6 @@ class MirrorPlayer( xbmc.Player ):
             self.pause()
     
     def _onStop(self, socket, data):
-        print data
         self._itemId = -1
         self._playstate = -1
         xbmc.executebuiltin("PlayerControl(Stop)")
@@ -72,7 +74,6 @@ class MirrorPlayer( xbmc.Player ):
     def onPlayBackStopped(self):
         if self._playstate == -1:
             return
-        xbmc.log('Player stopped')
         if self.socket is not None:
             self.socket.kill()
         self._playstate = 1
@@ -81,35 +82,38 @@ class MirrorPlayer( xbmc.Player ):
     def playFromServer(self):
         self._playstate = 1
         current = self._getItem()
-        print current
         if 'error' in current:
-            xbmc.log(current['error'], xbmc.LOGERROR)
+            xbmc.log('kodi-mirror::' + current['error'], xbmc.LOGERROR)
             self._itemId = -1
+            self._playstate = -1
             self._waitForItem()
         elif current['id'] != self._itemId:
             super(MirrorPlayer, self).play(current['stream'], current['listItem'])
             self._itemId = current['id']  
         
     def onPlayBackStarted( self ):
-        xbmc.log('playback started')
         xbmc.executebuiltin("Dialog.Close(busydialog)")   
         self._totalTime = self.getTotalTime()
+        self.checkLatency()
         
-        seek = self._getSeek()
-        print seek, seek['speed'] == 0
-        if abs(seek['seek'] - self.getTime()) > 5:
-            if seek['seek'] > 0:
+    def checkLatency(self):
+        latency = int(xbmcaddon.Addon().getSetting('max_latency'))
+        
+        while self._playstate == 1:
+            seek = self._getSeek()
+            if abs(seek['seek'] - self.getTime()) > latency:
                 self.seekTime(seek['seek'])
-            if seek['speed'] == 0:
-                self.pause()  
-            #TODO detect speed changes from server
+                if seek['speed'] == 0:
+                    self._onPause(None, None)
+                else:
+                    self._onPlay(None, None)
+            xbmc.sleep(latency * 1000) 
         
     def onPlayBackResumed(self):
-        xbmc.log('playback resumed')
         self._playstate = 1
+        self.checkLatency()
     
     def onPlayBackPaused(self):
-        xbmc.log('playback paused')
         self._playstate = 0
 
     def onPlayBackEnded( self ):
@@ -117,7 +121,7 @@ class MirrorPlayer( xbmc.Player ):
         if self.socket is None or self.socket.isAlive():
             self._waitForItem()
             
-    def isPaused():
+    def isPaused(self):
         start_time = self.getTime()
         time.sleep(1)
         if self.getTime() != start_time:
@@ -134,16 +138,18 @@ class MirrorPlayer( xbmc.Player ):
         dialog.create('Server Status', 'Waiting for content to be played...')
         dialog.update(0)
         count = 0
+        timeout = float(xbmcaddon.Addon().getSetting('timeout')) * 2
         while self._playstate == -1 and self._isActive:
             item = self._getItem()
-            if count > 20 or dialog.iscanceled():
+            if count > timeout or dialog.iscanceled():
                 self._isActive = False
                 break
             elif 'error' not in item:
                 self.playFromServer()
                 break
             else:
-                dialog.update(count * 5)
+                upd = int((count / timeout) * 100)
+                dialog.update(upd)
                 xbmc.sleep(500)
                 count += 1
         dialog.close()
@@ -167,7 +173,10 @@ class MirrorPlayer( xbmc.Player ):
         d = r.json()
         if 'error' in d:
             return {'error': d['error']}
-        file = d['result']['item']['file']
+        try:
+            file = d['result']['item']['file']
+        except:
+            return {'error': 'No Item Playing'}
         data = d['result']['item']
         id = d['result']['item']['id']
         
@@ -196,6 +205,5 @@ class MirrorPlayer( xbmc.Player ):
         return {"seek": seek, "speed": d['result']['speed']}
     
     def __del__(self):
-        print 'deleting player...'
         if self.socket is not None:
             self.socket.kill()

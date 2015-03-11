@@ -88,16 +88,14 @@ def addServer():
 def startMirror(id):
     server = serverSettings.getServer(id)
     if server is None:
-        xbmc.log('No server for id: ' + id, xbmc.LOGERROR)
+        xbmc.log('kodi-mirror::No server for id: ' + id, xbmc.LOGERROR)
         xbmcgui.Dialog().ok('Error', 'That server doesn\'t exists')
         return False
-    print server
     player = MirrorPlayer()
     player.withSocket(server['host'], int(server['port']))
     player.playFromServer()
     while not xbmc.abortRequested and player.isActive():
         xbmc.sleep(500) 
-    xbmc.log('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ Trying to delete...')
     del player
     
 
