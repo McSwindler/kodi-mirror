@@ -55,8 +55,8 @@ def main():
         runner = xbmc.translatePath(myaddon.getAddonInfo('path')).decode("utf-8") + '/contextHandler.py'
         arg = 'mode=remove&id=' + str(server['id'])
         li.addContextMenuItems([(_translation(30001), "XBMC.RunScript(" + runner + ", " + arg + ")")])
-        
-        xbmcplugin.addDirectoryItem(handle=addon_handle, url=_build_url({'mode': 'server', 'id': str(server['id'])}), listitem=li, isFolder=False)
+        li.setProperty('IsPlayable', 'true')
+        xbmcplugin.addDirectoryItem(handle=addon_handle, url=_build_url({'mode': 'server', 'id': str(server['id'])}), listitem=li)
         
     #Create server    
     li = xbmcgui.ListItem(_translation(30002))
@@ -93,13 +93,15 @@ def startMirror(id):
         return False
     player = MirrorPlayer()
     player.withSocket(server['host'], int(server['port']))
-    player.playFromServer()
+    listitem = player.playFromServer()
+    if listitem is not None:
+        xbmcplugin.setResolvedUrl(addon_handle, True, listitem)
+    else:
+        xbmcplugin.setResolvedUrl(addon_handle, False, xbmcgui.ListItem(unicode(server['name'])))
     while not xbmc.abortRequested and player.isActive():
         xbmc.sleep(500) 
     del player
     
-
-
 mode = _getParam('mode')
 if mode is None:
     main()

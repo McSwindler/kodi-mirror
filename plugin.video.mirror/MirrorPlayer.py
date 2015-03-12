@@ -1,4 +1,4 @@
-import xbmc, xbmcgui, xbmcaddon, xbmcvfs
+import xbmc, xbmcgui, xbmcaddon, xbmcplugin, xbmcvfs
 
 import requests,time
 try:
@@ -42,6 +42,7 @@ class MirrorPlayer( xbmc.Player ):
     
     #TODO detect speed changes from server
     def _onPlay(self, socket, data):
+        xbmc.log('kodi-mirror::onPlay JSON: ' + json.dumps(data), xbmc.LOGDEBUG)
         if not self.isPaused():
             self._playstate = 1
         if self._playstate == 1:
@@ -56,12 +57,14 @@ class MirrorPlayer( xbmc.Player ):
             self.playFromServer()
         
     def _onPause(self, socket, data):
+        xbmc.log('kodi-mirror::onPause JSON: ' + json.dumps(data), xbmc.LOGDEBUG)
         if self.isPaused():
             self._playstate = 0
         if self._playstate != 0:
             self.pause()
     
     def _onStop(self, socket, data):
+        xbmc.log('kodi-mirror::onStop JSON: ' + json.dumps(data), xbmc.LOGDEBUG)
         self._itemId = -1
         self._playstate = -1
         xbmc.executebuiltin("PlayerControl(Stop)")
@@ -72,11 +75,13 @@ class MirrorPlayer( xbmc.Player ):
         return self._isActive
             
     def onPlayBackStopped(self):
+        xbmc.log('kodi-mirror::Player Stopped', xbmc.LOGDEBUG)
         if self._playstate == -1:
             return
         if self.socket is not None:
             self.socket.kill()
-        self._playstate = 1
+            xbmc.log('kodi-mirror::Socket Killed', xbmc.LOGDEBUG)
+        self._playstate = 0
         self._isActive = False
         
     def playFromServer(self):
@@ -86,20 +91,22 @@ class MirrorPlayer( xbmc.Player ):
             xbmc.log('kodi-mirror::' + current['error'], xbmc.LOGERROR)
             self._itemId = -1
             self._playstate = -1
-            self._waitForItem()
+            return self._waitForItem()
         elif current['id'] != self._itemId:
             super(MirrorPlayer, self).play(current['stream'], current['listItem'])
             self._itemId = current['id']  
+            return current['listItem']
         
     def onPlayBackStarted( self ):
-        xbmc.executebuiltin("Dialog.Close(busydialog)")   
+        #xbmc.executebuiltin('Dialog.Close(all, true)')
+        #time.sleep(2)
         self._totalTime = self.getTotalTime()
         self.checkLatency()
         
     def checkLatency(self):
-        latency = int(xbmcaddon.Addon().getSetting('max_latency'))
+        latency = abs(int(xbmcaddon.Addon().getSetting('max_latency')))
         
-        while self._playstate == 1:
+        while not xbmc.abortRequested and self._playstate == 1 and self.isPlaying():
             seek = self._getSeek()
             if abs(seek['seek'] - self.getTime()) > latency:
                 self.seekTime(seek['seek'])
@@ -138,15 +145,15 @@ class MirrorPlayer( xbmc.Player ):
         dialog.create('Server Status', 'Waiting for content to be played...')
         dialog.update(0)
         count = 0
-        timeout = float(xbmcaddon.Addon().getSetting('timeout')) * 2
+        timeout = abs(float(xbmcaddon.Addon().getSetting('timeout'))) * 2
         while self._playstate == -1 and self._isActive:
             item = self._getItem()
             if count > timeout or dialog.iscanceled():
                 self._isActive = False
                 break
             elif 'error' not in item:
-                self.playFromServer()
-                break
+                dialog.close()
+                return self.playFromServer()
             else:
                 upd = int((count / timeout) * 100)
                 dialog.update(upd)
@@ -155,12 +162,14 @@ class MirrorPlayer( xbmc.Player ):
         dialog.close()
         if not self._isActive:
             self.socket.kill()
+        return None
                     
     def _getItem(self):
         if self._pid is None:
             payload = {"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}
             r = requests.post(self._webserv + 'jsonrpc', data=json.dumps(payload))
             d = r.json()
+            xbmc.log('kodi-mirror::activePlayers JSON: ' + json.dumps(d), xbmc.LOGDEBUG)
             if 'error' in d:
                 return {'error': d['error']}
             if len(d['result']) < 1:
@@ -171,6 +180,7 @@ class MirrorPlayer( xbmc.Player ):
         payload = {"jsonrpc": "2.0", "method": "Player.GetItem", "params": {"properties": videoprops, "playerid": self._pid}, "id": "getItem"}
         r = requests.post(self._webserv + 'jsonrpc', data=json.dumps(payload))
         d = r.json()
+        xbmc.log('kodi-mirror::getItem JSON: ' + json.dumps(d), xbmc.LOGDEBUG)
         if 'error' in d:
             return {'error': d['error']}
         try:
@@ -188,6 +198,7 @@ class MirrorPlayer( xbmc.Player ):
             payload = {"jsonrpc": "2.0", "method": "Files.PrepareDownload", "params": {"path": file}, "id": "prepDownload"}
             r = requests.post(self._webserv + 'jsonrpc', data=json.dumps(payload))
             d = r.json()
+            xbmc.log('kodi-mirror::download JSON: ' + json.dumps(d), xbmc.LOGDEBUG)
             stream = '%s%s' % (self._webserv, d['result']['details']['path'])
         else:
             stream = file
@@ -196,8 +207,9 @@ class MirrorPlayer( xbmc.Player ):
     
     def _getSeek(self):
         payload = {"jsonrpc": "2.0", "method": "Player.GetProperties", "params": {"properties": ["time", "speed"], "playerid": self._pid}, "id": "getItem"}
-        r = requests.post(self._webserv + 'jsonrpc', data=json.dumps(payload))
+        r = requests.post(self._webserv + 'jsonrpc', json=payload)
         d = r.json()
+        xbmc.log('kodi-mirror::seek JSON: ' + json.dumps(d), xbmc.LOGDEBUG)
         seek = float(d['result']['time']['milliseconds']) / 1000
         seek += d['result']['time']['seconds']
         seek += d['result']['time']['minutes'] * 60

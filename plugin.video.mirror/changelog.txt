@@ -4,3 +4,6 @@ v0.1
 
 v0.2
 -Added latency and timeout settings
+
+v0.3
+-Fixed bug of 'opening stream' window persisting

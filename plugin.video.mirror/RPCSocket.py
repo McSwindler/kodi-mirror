@@ -15,7 +15,7 @@ class RPCSocket:
             self._connect(host, port)
 
     def _connect(self, host, port):
-        timeout = int(xbmcaddon.Addon().getSetting('timeout')) * 1000
+        timeout = abs(float(xbmcaddon.Addon().getSetting('timeout'))) * 1000
         self.sock.settimeout(timeout)
         self.sock.connect((host, port))
         self.sock.settimeout(None)
