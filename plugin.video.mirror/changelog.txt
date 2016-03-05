@@ -7,3 +7,6 @@ v0.2
 
 v0.3
 -Fixed bug of 'opening stream' window persisting
+
+v0.3.1
+-Removed rogue import which hopefully fixes issue on OSX

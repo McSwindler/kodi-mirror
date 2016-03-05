@@ -2,7 +2,6 @@ try:
     import simplejson as json
 except:
     import json
-from multiprocessing import Pool
 import os
 from os.path import basename
 import shutil
