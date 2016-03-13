@@ -129,6 +129,8 @@ class MirrorPlayer( xbmc.Player ):
             self._waitForItem()
             
     def isPaused(self):
+		if not self.isPlaying():
+			return True
         start_time = self.getTime()
         time.sleep(1)
         if self.getTime() != start_time:
@@ -188,7 +190,11 @@ class MirrorPlayer( xbmc.Player ):
         except:
             return {'error': 'No Item Playing'}
         data = d['result']['item']
-        id = d['result']['item']['id']
+		
+		try:
+			id = d['result']['item']['id']
+		except:
+			id = hash(file)
         
         
         li = xbmcgui.ListItem(data['title'])  
